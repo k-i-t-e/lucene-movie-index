@@ -1,5 +1,6 @@
 package org.kite.movieindex.entity;
 
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.lucene.index.Term;
@@ -8,10 +9,14 @@ import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.FuzzyQuery;
 import org.apache.lucene.search.MatchAllDocsQuery;
 import org.apache.lucene.search.Query;
+import org.apache.lucene.search.Sort;
+import org.apache.lucene.search.SortField;
+import org.apache.lucene.search.SortedSetSortField;
 import org.kite.movieindex.dao.IndexField;
 
 import java.util.Date;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * Created by Mikhail_Miroliubov on 8/2/2017.
@@ -39,6 +44,22 @@ public class FilterForm {
         addCastQuery(builder);
 
         return builder.build();
+    }
+
+    public Sort buildSort() {
+        if (CollectionUtils.isEmpty(orderBy)) {
+            return null;
+        }
+
+        List<SortField> sortFields = orderBy.stream().map(o -> {
+            if (o.getField().getType() == SortField.Type.STRING) {
+                return new SortedSetSortField(o.getField().getFieldName(), o.isDesc());
+            } else {
+                return new SortField(o.getField().getFieldName(), o.getField().getType(), o.isDesc());
+            }
+        }).collect(Collectors.toList());
+
+        return new Sort(sortFields.toArray(new SortField[sortFields.size()]));
     }
 
     public boolean isEmpty() {

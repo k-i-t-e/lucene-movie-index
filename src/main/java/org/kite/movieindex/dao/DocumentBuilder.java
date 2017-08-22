@@ -29,6 +29,7 @@ public class DocumentBuilder {
         Document document = new Document();
 
         document.add(new TextField(IndexField.NAME.getFieldName(), movie.getName(), Field.Store.YES));
+        document.add(new SortedSetDocValuesField(IndexField.NAME.getFieldName(), new BytesRef(movie.getName())));
 
         document.add(new TextField(IndexField.DIRECTOR.getFieldName(), movie.getDirector(), Field.Store.YES));
         document.add(new SortedSetDocValuesField(IndexField.DIRECTOR.getFieldName(), new BytesRef(movie.getDirector())));
@@ -41,7 +42,7 @@ public class DocumentBuilder {
         }
 
         LocalDate date = movie.getReleaseDate().toInstant().atZone(ZoneId.systemDefault()).toLocalDate();
-        document.add(new IntPoint(IndexField.YEAR.getFieldName(), date.getYear()));
+        document.add(new IntPoint(IndexField.YEAR.getFieldName(), date.getYear())); // we wanna have facets for release year
         document.add(new StoredField(IndexField.YEAR.getFieldName(), date.getYear()));
         document.add(new NumericDocValuesField(IndexField.YEAR.getFieldName(), date.getYear()));
         document.add(new SortedSetDocValuesFacetField(IndexField.YEAR.getFieldName(), Integer.toString(date.getYear())));

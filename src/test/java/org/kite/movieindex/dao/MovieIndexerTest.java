@@ -1,6 +1,7 @@
 package org.kite.movieindex.dao;
 
 import org.apache.commons.io.FileUtils;
+import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Assert;
 import org.junit.Before;
@@ -22,8 +23,10 @@ import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.Date;
 import java.util.List;
+import java.util.stream.Collectors;
 
 public class MovieIndexerTest {
     @Spy
@@ -61,6 +64,80 @@ public class MovieIndexerTest {
             TestUtil.assertListEquals(movie.getCast(), m.getCast());
             Assert.assertEquals(movie.getRating(), m.getRating());
             Assert.assertEquals(movie.getReleaseDate(), m.getReleaseDate());
+        }
+    }
+
+    @Test
+    public void searchComplex() throws IOException
+    {
+        List<Movie> movies = createMovies();
+        indexer.index(movies);
+
+        FilterForm filterForm = new FilterForm();
+        filterForm.setSearchString("Tarantino");
+
+        SearchResult<Movie> res = indexer.search(filterForm.buildQuery(), null, filterForm.getPage(),
+                filterForm.getPageSize());
+        checkContainsString(res, "Tarantino");
+
+        filterForm.setSearchString("willis");
+        res = indexer.search(filterForm.buildQuery(), null, filterForm.getPage(),
+                filterForm.getPageSize());
+        checkContainsString(res, "Willis");
+    }
+
+    @Test
+    public void testSorting() throws IOException
+    {
+        List<Movie> movies = createMovies();
+        indexer.index(movies);
+
+        FilterForm filterForm = new FilterForm();
+
+        testSorting(filterForm, new FilterForm.OrderBy(IndexField.NAME, false), Comparator.comparing(Movie::getName));
+        testSorting(filterForm, new FilterForm.OrderBy(IndexField.DIRECTOR, false), Comparator.comparing(Movie::getDirector));
+        testSorting(filterForm, new FilterForm.OrderBy(IndexField.RATING, false), Comparator.comparing(Movie::getRating));
+        testSorting(filterForm, new FilterForm.OrderBy(IndexField.RELEASE_DATE, false), Comparator.comparing(Movie::getReleaseDate));
+        testSorting(filterForm, new FilterForm.OrderBy(IndexField.CAST, false), (o1, o2) -> {
+            Collections.sort(o1.getCast());
+            Collections.sort(o2.getCast());
+            return o1.getCast().get(0).compareTo(o2.getCast().get(0));
+        });
+
+        testSorting(filterForm, new FilterForm.OrderBy(IndexField.GENRE, false), (o1, o2) -> {
+            Collections.sort(o1.getGenres());
+            Collections.sort(o2.getGenres());
+            return o1.getGenres().get(0).compareTo(o2.getGenres().get(0));
+        });
+    }
+
+    private void testSorting(FilterForm filterForm, FilterForm.OrderBy orderBy, Comparator<Movie> comparator) throws IOException
+    {
+        filterForm.setOrderBy(Collections.singletonList(orderBy));
+        SearchResult<Movie> res = indexer.search(filterForm.buildQuery(), filterForm.buildSort(), filterForm.getPage(),
+                filterForm.getPageSize());
+
+        Assert.assertFalse(res.getResults().isEmpty());
+        Assert.assertTrue(checkSorting(res.getResults(), comparator));
+    }
+
+    private boolean checkSorting(List<Movie> movies, Comparator<Movie> comparator) {
+        for (int i = 0; i < movies.size(); i++) {
+            if (i > 0) {
+                if (comparator.compare(movies.get(i - 1), movies.get(i)) > 0) {
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    }
+
+    private void checkContainsString(SearchResult<Movie> res, String str)
+    {
+        Assert.assertFalse(res.getResults().isEmpty());
+        for (Movie m : res.getResults()) {
+            Assert.assertTrue(m.getName().contains(str) || m.getDirector().contains(str) || m.getCast().stream().anyMatch(c -> c.contains(str)));
         }
     }
 
@@ -113,7 +190,7 @@ public class MovieIndexerTest {
         makeMovieCopies(cast1, cast2, movies, tarantinoMovie, initDate);
 
         Movie rodrigesMovie = new Movie();
-        tarantinoMovie.setName("Rodriges Movie ");
+        rodrigesMovie.setName("Rodriges Movie ");
         rodrigesMovie.setDirector("Robert Rodriges");
         rodrigesMovie.setGenres(Collections.singletonList(Genre.HORROR));
         rodrigesMovie.setRating(7.0F);
@@ -122,7 +199,7 @@ public class MovieIndexerTest {
         makeMovieCopies(cast1, cast2, movies, rodrigesMovie, initDate);
 
         Movie spilbergMovie = new Movie();
-        tarantinoMovie.setName("Spielberg Movie ");
+        spilbergMovie.setName("Spielberg Movie ");
         spilbergMovie.setDirector("Stievin Spielberg");
         spilbergMovie.setGenres(Collections.singletonList(Genre.COMEDY));
         spilbergMovie.setRating(7.0F);
@@ -144,8 +221,8 @@ public class MovieIndexerTest {
         }
     }
 
-    @AfterClass
-    public static void tearDown() {
+    @After
+    public void tearDown() {
         File testIndexDir = new File("./test-index.luc");
         FileUtils.deleteQuietly(testIndexDir);
     }
