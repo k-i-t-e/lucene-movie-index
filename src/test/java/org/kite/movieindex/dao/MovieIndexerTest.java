@@ -2,7 +2,6 @@ package org.kite.movieindex.dao;
 
 import org.apache.commons.io.FileUtils;
 import org.junit.After;
-import org.junit.AfterClass;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
@@ -25,8 +24,9 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
-import java.util.stream.Collectors;
+import java.util.Map;
 
 public class MovieIndexerTest {
     @Spy
@@ -68,8 +68,7 @@ public class MovieIndexerTest {
     }
 
     @Test
-    public void searchComplex() throws IOException
-    {
+    public void searchComplex() throws IOException {
         List<Movie> movies = createMovies();
         indexer.index(movies);
 
@@ -87,33 +86,56 @@ public class MovieIndexerTest {
     }
 
     @Test
-    public void testSorting() throws IOException
-    {
+    public void testSorting() throws IOException {
         List<Movie> movies = createMovies();
         indexer.index(movies);
 
         FilterForm filterForm = new FilterForm();
 
-        testSorting(filterForm, new FilterForm.OrderBy(IndexField.NAME, false), Comparator.comparing(Movie::getName));
-        testSorting(filterForm, new FilterForm.OrderBy(IndexField.DIRECTOR, false), Comparator.comparing(Movie::getDirector));
-        testSorting(filterForm, new FilterForm.OrderBy(IndexField.RATING, false), Comparator.comparing(Movie::getRating));
-        testSorting(filterForm, new FilterForm.OrderBy(IndexField.RELEASE_DATE, false), Comparator.comparing(Movie::getReleaseDate));
-        testSorting(filterForm, new FilterForm.OrderBy(IndexField.CAST, false), (o1, o2) -> {
+        testSorting(filterForm, Collections.singletonList(new FilterForm.OrderBy(IndexField.NAME, false)), Comparator.comparing(Movie::getName));
+        testSorting(filterForm, Collections.singletonList(new FilterForm.OrderBy(IndexField.DIRECTOR, false)), Comparator.comparing(Movie::getDirector));
+        testSorting(filterForm, Collections.singletonList(new FilterForm.OrderBy(IndexField.RATING, false)), Comparator.comparing(Movie::getRating));
+        testSorting(filterForm, Collections.singletonList(new FilterForm.OrderBy(IndexField.RELEASE_DATE, false)), Comparator.comparing(Movie::getReleaseDate));
+        testSorting(filterForm, Collections.singletonList(new FilterForm.OrderBy(IndexField.CAST, false)), (o1, o2) -> {
             Collections.sort(o1.getCast());
             Collections.sort(o2.getCast());
             return o1.getCast().get(0).compareTo(o2.getCast().get(0));
         });
 
-        testSorting(filterForm, new FilterForm.OrderBy(IndexField.GENRE, false), (o1, o2) -> {
+        testSorting(filterForm, Collections.singletonList(new FilterForm.OrderBy(IndexField.GENRE, false)), (o1, o2) -> {
             Collections.sort(o1.getGenres());
             Collections.sort(o2.getGenres());
             return o1.getGenres().get(0).compareTo(o2.getGenres().get(0));
         });
+
+        testSorting(filterForm, Arrays.asList(new FilterForm.OrderBy(IndexField.RATING, true),
+                new FilterForm.OrderBy(IndexField.NAME, false)), (o1, o2) -> o1.getName().compareTo(o2.getName()) * o2.getRating().compareTo(o1.getRating()));
     }
 
-    private void testSorting(FilterForm filterForm, FilterForm.OrderBy orderBy, Comparator<Movie> comparator) throws IOException
-    {
-        filterForm.setOrderBy(Collections.singletonList(orderBy));
+    @Test
+    public void testPaging() throws IOException {
+        List<Movie> movies = createMovies();
+        indexer.index(movies);
+
+        FilterForm filterForm = new FilterForm();
+        filterForm.setPageSize(3);
+
+        Map<String, Movie> nameMovieMap = new HashMap<>();
+        for (int i = 1; i < 4; i++) {
+            filterForm.setPage(i);
+            SearchResult<Movie> res = indexer.search(filterForm.buildQuery(), null, filterForm.getPage(),
+                    filterForm.getPageSize());
+            Assert.assertEquals(movies.size(), res.getTotalResultsCount().intValue());
+            Assert.assertEquals(movies.size() / filterForm.getPageSize(), res.getTotalPagesCount().intValue());
+            for (Movie m : res.getResults()) {
+                Assert.assertFalse(nameMovieMap.containsKey(m.getName()));
+                nameMovieMap.put(m.getName(), m);
+            }
+        }
+    }
+
+    private void testSorting(FilterForm filterForm, List<FilterForm.OrderBy> orderBy, Comparator<Movie> comparator) throws IOException {
+        filterForm.setOrderBy(orderBy);
         SearchResult<Movie> res = indexer.search(filterForm.buildQuery(), filterForm.buildSort(), filterForm.getPage(),
                 filterForm.getPageSize());
 
@@ -142,8 +164,7 @@ public class MovieIndexerTest {
     }
 
     @Test
-    public void testGroup() throws IOException
-    {
+    public void testGroup() throws IOException {
         List<Movie> movies = createMovies();
         indexer.index(movies);
 
@@ -173,8 +194,7 @@ public class MovieIndexerTest {
         Assert.assertEquals(3, groups.stream().filter(g -> g.getName().equals("9")).findFirst().get().getValue().intValue());
     }
 
-    private List<Movie> createMovies()
-    {
+    private List<Movie> createMovies() {
         List<String> cast1 = Arrays.asList("John Travolta", "Samuel L Jackson", "Uma Thurman");
         List<String> cast2 = Arrays.asList("Bruce Willis", "Will Smith", "Daniel Radckliff");
 
@@ -209,8 +229,7 @@ public class MovieIndexerTest {
         return movies;
     }
 
-    private void makeMovieCopies(List<String> cast1, List<String> cast2, List<Movie> movies, Movie origin, LocalDate initDate)
-    {
+    private void makeMovieCopies(List<String> cast1, List<String> cast2, List<Movie> movies, Movie origin, LocalDate initDate) {
         for (int i = 0; i < 3; i++) {
             Movie m = new Movie(origin);
             m.setReleaseDate(Date.from(initDate.plusYears(i).atStartOfDay(ZoneId.systemDefault()).toInstant()));
