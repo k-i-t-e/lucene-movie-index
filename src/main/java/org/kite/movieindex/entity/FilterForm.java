@@ -3,6 +3,8 @@ package org.kite.movieindex.entity;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
+import org.apache.lucene.document.FloatPoint;
+import org.apache.lucene.document.LongPoint;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanQuery;
@@ -12,6 +14,7 @@ import org.apache.lucene.search.Query;
 import org.apache.lucene.search.Sort;
 import org.apache.lucene.search.SortField;
 import org.apache.lucene.search.SortedSetSortField;
+import org.apache.lucene.search.TermQuery;
 import org.kite.movieindex.dao.IndexField;
 
 import java.util.Date;
@@ -42,6 +45,9 @@ public class FilterForm {
         addSearchStringQuery(builder);
         addDirectorQuery(builder);
         addCastQuery(builder);
+        addReleaseDateQuery(builder);
+        addRatingQuery(builder);
+        addGenreQuery(builder);
 
         return builder.build();
     }
@@ -65,6 +71,58 @@ public class FilterForm {
     public boolean isEmpty() {
         return StringUtils.isBlank(searchString) && StringUtils.isBlank(director) && StringUtils.isBlank(cast)
                 && releaseDateBetween == null && ratingBetween == null && genres == null;
+    }
+
+    private void addReleaseDateQuery(BooleanQuery.Builder builder) {
+        if (releaseDateBetween != null && (releaseDateBetween.getLeft() != null || releaseDateBetween.getRight() != null)) {
+            Query query = null;
+            if (releaseDateBetween.getLeft() != null && releaseDateBetween.getRight() != null) {
+                query = LongPoint.newRangeQuery(IndexField.RELEASE_DATE.getFieldName(), releaseDateBetween.getLeft().getTime(),
+                        releaseDateBetween.getRight().getTime());
+                // Note: this is an inclusive range. To make an exclusive, use Math.addExact(lowerValue, 1) or Math.addExact(upperValue, -1)
+            } else if (releaseDateBetween.getLeft() != null) {
+                query = LongPoint.newRangeQuery(IndexField.RELEASE_DATE.getFieldName(), releaseDateBetween.getLeft().getTime(),
+                        Long.MAX_VALUE); // This way we can do half-open ranges
+            } else if (releaseDateBetween.getRight() != null) {
+                query = LongPoint.newRangeQuery(IndexField.RELEASE_DATE.getFieldName(), Long.MIN_VALUE,
+                        releaseDateBetween.getRight().getTime());
+            }
+
+            builder.add(query, BooleanClause.Occur.MUST);
+        }
+    }
+
+    private void addRatingQuery(BooleanQuery.Builder builder) {
+        if (ratingBetween != null && (ratingBetween.getLeft() != null || ratingBetween.getRight() != null)) {
+            Query query = null;
+            if (ratingBetween.getLeft() != null && ratingBetween.getRight() != null) {
+                query = FloatPoint.newRangeQuery(IndexField.RATING.getFieldName(), ratingBetween.getLeft(),
+                        ratingBetween.getRight());
+            } else if (ratingBetween.getLeft() != null) {
+                query = FloatPoint.newRangeQuery(IndexField.RATING.getFieldName(), ratingBetween.getLeft(),
+                        Float.MAX_VALUE);
+            } else if (ratingBetween.getRight() != null) {
+                query = FloatPoint.newRangeQuery(IndexField.RATING.getFieldName(), Float.MIN_VALUE,
+                        ratingBetween.getRight());
+            }
+
+            /* This way you can do an exact query:
+            FloatPoint.newExactQuery(IndexField.RATING.getFieldName(), value)
+            */
+
+            builder.add(query, BooleanClause.Occur.MUST);
+        }
+    }
+
+    private void addGenreQuery(BooleanQuery.Builder builder) {
+        if (genres != null && CollectionUtils.isNotEmpty(genres.getField())) {
+            BooleanQuery.Builder genreBuilder = new BooleanQuery.Builder();
+            genres.getField().forEach(g -> genreBuilder.add(new TermQuery(
+                    new Term(IndexField.GENRE.getFieldName(), g.name().toLowerCase())),
+                    genres.conjunction ? BooleanClause.Occur.MUST : BooleanClause.Occur.SHOULD));
+
+            builder.add(genreBuilder.build(), BooleanClause.Occur.MUST);
+        }
     }
 
     private void addSearchStringQuery(BooleanQuery.Builder builder) {

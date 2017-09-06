@@ -1,6 +1,7 @@
 package org.kite.movieindex.dao;
 
 import org.apache.commons.io.FileUtils;
+import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
@@ -83,6 +84,72 @@ public class MovieIndexerTest {
         res = indexer.search(filterForm.buildQuery(), null, filterForm.getPage(),
                 filterForm.getPageSize());
         checkContainsString(res, "Willis");
+    }
+
+    @Test
+    public void testSearchByGenre() throws IOException
+    {
+        List<Movie> movies = createMovies();
+        indexer.index(movies);
+
+        FilterForm filterForm = new FilterForm();
+        filterForm.setGenres(new FilterForm.FilterSection<>(Collections.singletonList(Genre.ACTION)));
+
+        SearchResult<Movie> res = indexer.search(filterForm.buildQuery(), null, filterForm.getPage(),
+                filterForm.getPageSize());
+        Assert.assertFalse(res.getResults().isEmpty());
+        Assert.assertTrue(res.getResults().stream().allMatch(m -> m.getGenres().contains(Genre.ACTION)));
+
+        filterForm.setGenres(new FilterForm.FilterSection<>(Arrays.asList(Genre.ACTION, Genre.HORROR)));
+        res = indexer.search(filterForm.buildQuery(), null, filterForm.getPage(), filterForm.getPageSize());
+        Assert.assertFalse(res.getResults().isEmpty());
+        Assert.assertTrue(res.getResults().stream().anyMatch(m -> m.getGenres().contains(Genre.ACTION)));
+        Assert.assertTrue(res.getResults().stream().anyMatch(m -> m.getGenres().contains(Genre.HORROR)));
+
+        filterForm.setGenres(new FilterForm.FilterSection<>(Arrays.asList(Genre.ACTION, Genre.HORROR), true));
+        res = indexer.search(filterForm.buildQuery(), null, filterForm.getPage(), filterForm.getPageSize());
+        Assert.assertTrue(res.getResults().isEmpty());
+
+        filterForm.setGenres(new FilterForm.FilterSection<>(Arrays.asList(Genre.ACTION, Genre.COMEDY), true));
+        res = indexer.search(filterForm.buildQuery(), null, filterForm.getPage(), filterForm.getPageSize());
+        Assert.assertFalse(res.getResults().isEmpty());
+        Assert.assertTrue(res.getResults().stream()
+                .allMatch(m -> m.getGenres().contains(Genre.ACTION) && m.getGenres().contains(Genre.COMEDY)));
+    }
+
+    @Test
+    public void testSearchByReleaseDate() throws IOException
+    {
+        List<Movie> movies = createMovies();
+        indexer.index(movies);
+
+        FilterForm filterForm = new FilterForm();
+        LocalDate date1 = LocalDate.of(1991, 6, 1);
+        LocalDate date2 = LocalDate.of(1992, 6, 1);
+        filterForm.setReleaseDateBetween(new ImmutablePair<>(Date.from(date1.atStartOfDay(ZoneId.systemDefault()).toInstant()),
+                Date.from(date2.atStartOfDay(ZoneId.systemDefault()).toInstant())));
+
+        SearchResult<Movie> res = indexer.search(filterForm.buildQuery(), null, filterForm.getPage(),
+                filterForm.getPageSize());
+        Assert.assertFalse(res.getResults().isEmpty());
+        Assert.assertTrue(res.getResults().stream()
+                .allMatch(m -> m.getReleaseDate().getTime() >= Date.from(date1.atStartOfDay(ZoneId.systemDefault()).toInstant()).getTime() &&
+                        m.getReleaseDate().getTime() <= Date.from(date2.atStartOfDay(ZoneId.systemDefault()).toInstant()).getTime()));
+    }
+
+    @Test
+    public void testSearchByRating() throws IOException
+    {
+        List<Movie> movies = createMovies();
+        indexer.index(movies);
+
+        FilterForm filterForm = new FilterForm();
+        filterForm.setRatingBetween(new ImmutablePair<>(7.0F, 7.5F));
+
+        SearchResult<Movie> res = indexer.search(filterForm.buildQuery(), null, filterForm.getPage(),
+                filterForm.getPageSize());
+        Assert.assertFalse(res.getResults().isEmpty());
+        Assert.assertTrue(res.getResults().stream().allMatch(m -> m.getRating() >= 7.0 && m.getRating() <= 7.5));
     }
 
     @Test
